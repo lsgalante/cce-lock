@@ -716,7 +716,57 @@ delegate_seat!(AppState);
 delegate_keyboard!(AppState);
 delegate_registry!(AppState);
 
+/// Usage text. Deliberately says what this binary does the moment it runs,
+/// because the surprising thing about a locker is that there is no harmless
+/// way to "just try it".
+const USAGE: &str = "\
+cce-lock — lock the current Wayland session until the user re-authenticates.
+
+Usage:
+  cce-lock            lock the session NOW (there is no confirmation)
+  cce-lock --help     show this and exit without locking
+  cce-lock --version  print the version and exit without locking
+
+Locking needs a compositor offering ext-session-lock-v1, and a PAM stack at
+/etc/pam.d/cce-lock (installed by `ccebuild install-system`, not by the plain
+user install). Both are checked before the screen is locked, so a missing one
+costs nothing; that ordering is the difference between a failed lock and an
+unlockable session.
+";
+
+/// Handle `--help` / `--version`, and refuse anything else, BEFORE main does
+/// any of its work.
+///
+/// Without this the binary ignored argv completely, so every invocation locked
+/// the session — including `cce-lock --help`, which is the first thing anyone
+/// types at an unfamiliar command and which took the author's live session
+/// down on 2026-09-19. An unrecognised argument must not fall through to
+/// locking either: a typo is a question, not a request to seize the screen.
+fn handle_args() {
+    for arg in std::env::args().skip(1) {
+        match arg.as_str() {
+            "-h" | "--help" => {
+                print!("{USAGE}");
+                std::process::exit(0);
+            }
+            "-V" | "--version" => {
+                println!("cce-lock {}", env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            }
+            other => {
+                eprintln!("cce-lock: unrecognised argument {other:?} — not locking.");
+                eprintln!("Try `cce-lock --help`. Run with no arguments to lock.");
+                std::process::exit(2);
+            }
+        }
+    }
+}
+
 fn main() {
+    // First, before the logger and before anything touches PAM or Wayland:
+    // the only two invocations that must NOT lock the session.
+    handle_args();
+
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
         .init();
