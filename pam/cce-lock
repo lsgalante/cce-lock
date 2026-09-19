@@ -1,0 +1,17 @@
+#%PAM-1.0
+#
+# Screen locker: a CREDENTIAL CHECK and nothing else.
+#
+# No `session` stack on purpose. cce-lock never calls pam_open_session — the
+# user's session already exists; the locker only re-verifies the person in
+# front of it. The greeter learned this the hard way: opening a session there
+# ran pam_gnome_keyring's auto_start, a fork() out of a multi-threaded Vulkan
+# process, which could wedge before exec and freeze login on
+# "Authenticating..." (2026-09-18). A locker that did the same would freeze
+# with the session still locked.
+#
+# No `password` stack either: a locker must never be a route to changing a
+# password.
+
+auth       include      system-local-login
+account    include      system-local-login

@@ -1,0 +1,21 @@
+[package]
+name = "cce-lock"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cce-ui = { path = "../cce-ui" }
+# Raw pam_sys, not the `pam` wrapper: the locker needs a conversation function
+# that answers PROMPT_ECHO_OFF from a buffer it holds, and nothing else.
+pam-sys = "0.5.6"
+libc = "0.2"
+users = "0.8.1"
+smithay-client-toolkit = { version = "0.19.2", features = ["calloop"] }
+calloop = "0.13.0"
+calloop-wayland-source = "0.3.0"
+wayland-client = { version = "0.31", features = ["system"] }
+# ext-session-lock-v1 lives in the staging set.
+wayland-protocols = { version = "0.31", features = ["client", "staging"] }
+xkeysym = "0.2"
+log = "0.4"
+env_logger = "0.11"
