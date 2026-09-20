@@ -1,0 +1,7 @@
+# git.lucas.co is static hosting, so it speaks git's dumb HTTP protocol only.
+# Cargo's built-in git client tries smart HTTP first and fails on the response
+# content-type; the git CLI handles dumb HTTP the same way `git clone` does.
+# Needed by anyone building this crate on its own, so it is committed here
+# rather than left to the installing machine's environment.
+[net]
+git-fetch-with-cli = true
