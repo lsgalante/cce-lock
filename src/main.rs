@@ -313,8 +313,7 @@ impl AppState {
         let depth = cce_ui::color::plate_bevel_width();
         pc.plate_spec(&cce_ui::scene::paint::PlateSpec {
             rect: card,
-            color: [0.013, 0.013, 0.017, 1.0],
-            blur: false,
+            material: cce_ui::scene::Material::opaque([0.013, 0.013, 0.017, 1.0]),
             window_corners: (true, true, true, true),
             depth,
         });
