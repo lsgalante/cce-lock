@@ -286,6 +286,7 @@ impl AppState {
     /// The lock screen itself: an opaque ground, a centred card, the password
     /// well and its bullets, and one status line.
     fn build_scene(&self, w: f32, h: f32) -> (cce_ui::scene::paint::DisplayList, Vec<Label>) {
+        // style-audit: opt-out the lock screen is a black surface carrying one card plate
         let mut pc = cce_ui::scene::paint::PaintCtx::new();
         let mut labels = Vec::new();
 
