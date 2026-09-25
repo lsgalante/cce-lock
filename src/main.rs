@@ -503,8 +503,15 @@ impl Dispatch<ExtSessionLockSurfaceV1, u32> for AppState {
                     out.wl_surface.set_buffer_scale(out.scale as i32);
                     let conn_ptr = _conn.backend().display_id().as_ptr() as *mut std::ffi::c_void;
                     let surf_ptr = out.wl_surface.id().as_ptr() as *mut std::ffi::c_void;
-                    out.renderer =
-                        Some(unsafe { VkRenderer::new(conn_ptr, surf_ptr, pw, ph, 0.0) });
+                    // A lost surface means the connection is dying under us.
+                    // Never an unlock, and not an exit either: the output just
+                    // stays unpainted (`draw` skips it), the next configure
+                    // tries again, and a dead connection ends the main loop's
+                    // dispatch the way it always has — still locked.
+                    match unsafe { VkRenderer::try_new(conn_ptr, surf_ptr, pw, ph, 0.0) } {
+                        Ok(r) => out.renderer = Some(r),
+                        Err(lost) => log::warn!("output {id}: {lost}; not painting it"),
+                    }
                 }
             }
             state.draw(*id);
