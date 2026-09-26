@@ -133,6 +133,10 @@ struct AppState {
     font_system: FontSystem,
     swash_cache: SwashCache,
     auth_tx: calloop::channel::Sender<auth::AuthEvent>,
+    /// For the keyboard's repeat timer, and for the repeats it delivers,
+    /// which arrive without a queue handle of their own.
+    loop_handle: calloop::LoopHandle<'static, AppState>,
+    qh: QueueHandle<AppState>,
 }
 
 impl AppState {
@@ -603,7 +607,19 @@ impl SeatHandler for AppState {
         capability: Capability,
     ) {
         if capability == Capability::Keyboard && self.keyboard.is_none() {
-            self.keyboard = self.seat_state.get_keyboard(qh, &seat, None).ok();
+            // With repeat, so a held Backspace clears the field the way it
+            // does everywhere else (`repeat_key`); until 2026-09-26 it was
+            // bound without, and deleted one character per press.
+            self.keyboard = self
+                .seat_state
+                .get_keyboard_with_repeat(
+                    qh,
+                    &seat,
+                    None,
+                    self.loop_handle.clone(),
+                    Box::new(|state: &mut AppState, _keyboard, event| state.repeat_key(event)),
+                )
+                .ok();
         }
     }
     fn remove_capability(
@@ -652,6 +668,46 @@ impl KeyboardHandler for AppState {
         _: u32,
         event: KeyEvent,
     ) {
+        self.key_pressed(qh, event);
+    }
+
+    fn release_key(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        _: u32,
+        _: KeyEvent,
+    ) {
+    }
+
+    fn update_modifiers(
+        &mut self,
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        _: u32,
+        modifiers: Modifiers,
+        _: u32,
+    ) {
+        if modifiers.caps_lock != self.caps_lock {
+            self.caps_lock = modifiers.caps_lock;
+            self.draw_all(qh);
+        }
+    }
+}
+
+impl AppState {
+    /// A held key's repeat, fed back in as another press — for the keys
+    /// `lock_key_repeats` allows, and never Return.
+    fn repeat_key(&mut self, event: KeyEvent) {
+        if lock_key_repeats(event.keysym, event.utf8.as_deref()) {
+            let qh = self.qh.clone();
+            self.key_pressed(&qh, event);
+        }
+    }
+
+    fn key_pressed(&mut self, qh: &QueueHandle<Self>, event: KeyEvent) {
         // Everything is ignored mid-check: a held Return would otherwise
         // queue attempts against pam_faillock and lock the account out.
         if matches!(self.phase, Phase::Checking | Phase::Unlocking) {
@@ -683,30 +739,31 @@ impl KeyboardHandler for AppState {
         }
         self.draw_all(qh);
     }
+}
 
-    fn release_key(
-        &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-        _: &wl_keyboard::WlKeyboard,
-        _: u32,
-        _: KeyEvent,
-    ) {
+/// Whether a held key repeats on the lock screen: Backspace and typed
+/// characters. Never Return — each repeat would be another password attempt
+/// against pam_faillock — and not Escape, which has nothing more to clear.
+fn lock_key_repeats(keysym: Keysym, utf8: Option<&str>) -> bool {
+    match keysym {
+        Keysym::BackSpace => true,
+        Keysym::Return | Keysym::KP_Enter | Keysym::Escape => false,
+        _ => utf8.is_some_and(|t| !t.is_empty() && !t.chars().any(char::is_control)),
     }
+}
 
-    fn update_modifiers(
-        &mut self,
-        _: &Connection,
-        qh: &QueueHandle<Self>,
-        _: &wl_keyboard::WlKeyboard,
-        _: u32,
-        modifiers: Modifiers,
-        _: u32,
-    ) {
-        if modifiers.caps_lock != self.caps_lock {
-            self.caps_lock = modifiers.caps_lock;
-            self.draw_all(qh);
-        }
+#[cfg(test)]
+mod repeat_tests {
+    use super::{lock_key_repeats, Keysym};
+
+    #[test]
+    fn only_backspace_and_text_repeat_and_never_return() {
+        assert!(lock_key_repeats(Keysym::BackSpace, Some("\u{8}")));
+        assert!(lock_key_repeats(Keysym::a, Some("a")));
+        assert!(!lock_key_repeats(Keysym::Return, Some("\r")));
+        assert!(!lock_key_repeats(Keysym::KP_Enter, Some("\r")));
+        assert!(!lock_key_repeats(Keysym::Escape, Some("\u{1b}")));
+        assert!(!lock_key_repeats(Keysym::Shift_L, None));
     }
 }
 
@@ -845,6 +902,8 @@ fn main() {
         font_system: cce_ui::create_font_system(),
         swash_cache: SwashCache::new(),
         auth_tx,
+        loop_handle: event_loop.handle(),
+        qh: qh.clone(),
     };
 
     state.lock = Some(lock_manager.lock(&qh, ()));
