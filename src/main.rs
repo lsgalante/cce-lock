@@ -342,14 +342,12 @@ impl AppState {
         // One dot per character. Never the characters themselves, and never a
         // count in the status line either — both leak the password's length to
         // anyone watching the screen.
-        let dot_r = 3.5;
-        let dot_gap = 11.0;
-        let dots = self.password.chars().count().min(32);
+        let dots = dots_shown(self.password.chars().count(), well.width);
         for i in 0..dots {
             pc.circle(
-                well.x + 14.0 + dot_r + i as f32 * dot_gap,
+                well.x + DOT_INSET + DOT_R + i as f32 * DOT_GAP,
                 well.y + well.height / 2.0,
-                dot_r,
+                DOT_R,
                 [0.80, 0.80, 0.88, 1.0],
             );
         }
@@ -741,6 +739,23 @@ impl AppState {
     }
 }
 
+/// Password dots: radius, centre-to-centre step, and the well's inner margin.
+const DOT_R: f32 = 3.5;
+const DOT_GAP: f32 = 11.0;
+const DOT_INSET: f32 = 14.0;
+
+/// How many dots a `len`-character password shows in a well `well_w` wide:
+/// one per character, up to as many as fit inside the well with its margin
+/// on both sides. A full well stays full as typing goes on. The cap was a
+/// fixed 32 until 2026-09-26, for a well that holds 26 at its usual width,
+/// so a long password — easy to reach once Backspace and letters repeat —
+/// ran its dots out past the well's right edge.
+fn dots_shown(len: usize, well_w: f32) -> usize {
+    let room = well_w - 2.0 * DOT_INSET - 2.0 * DOT_R;
+    let fit = if room < 0.0 { 0 } else { (room / DOT_GAP).floor() as usize + 1 };
+    len.min(fit)
+}
+
 /// Whether a held key repeats on the lock screen: Backspace and typed
 /// characters. Never Return — each repeat would be another password attempt
 /// against pam_faillock — and not Escape, which has nothing more to clear.
@@ -755,6 +770,20 @@ fn lock_key_repeats(keysym: Keysym, utf8: Option<&str>) -> bool {
 #[cfg(test)]
 mod repeat_tests {
     use super::{lock_key_repeats, Keysym};
+
+    #[test]
+    fn dots_stop_at_the_well_edge() {
+        use super::{dots_shown, DOT_GAP, DOT_INSET, DOT_R};
+        // The usual card: a 312 px well holds 26.
+        assert_eq!(dots_shown(5, 312.0), 5);
+        assert_eq!(dots_shown(40, 312.0), 26);
+        // The last dot's right edge stays inside the margin.
+        let last_right = DOT_INSET + DOT_R + 25.0 * DOT_GAP + DOT_R;
+        assert!(last_right <= 312.0 - DOT_INSET);
+        // A narrow card holds fewer; a well too small for one holds none.
+        assert!(dots_shown(40, 120.0) < 26);
+        assert_eq!(dots_shown(3, 10.0), 0);
+    }
 
     #[test]
     fn only_backspace_and_text_repeat_and_never_return() {
