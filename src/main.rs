@@ -284,6 +284,8 @@ impl AppState {
             images: &images,
             plate_features: &features,
             clear_color: [0.0, 0.0, 0.0, 1.0],
+            // Always a full frame: the lock screen repaints whole.
+            damage: None,
         });
     }
 
