@@ -129,6 +129,11 @@ struct AppState {
     /// before exiting.
     unlocked: bool,
     exit: bool,
+    /// Something on screen changed since the last paint. The main loop paints
+    /// only then — until 2026-10-05 it repainted every output on every pass of
+    /// a 50 ms dispatch, ~20 full frames a second for as long as the screen
+    /// stayed locked, with nothing on it moving.
+    dirty: bool,
 
     font_system: FontSystem,
     swash_cache: SwashCache,
@@ -194,6 +199,7 @@ impl AppState {
             self.phase = Phase::Prompt;
             self.status = Some("Locking, one moment…".to_string());
             self.unlock_when_locked = true;
+            self.dirty = true;
             return;
         }
         let Some(lock) = self.lock.take() else {
@@ -234,18 +240,30 @@ impl AppState {
         );
     }
 
+    /// Ask for a repaint of every output; the main loop does it once the
+    /// events in hand are handled.
     fn draw_all(&mut self, _qh: &QueueHandle<Self>) {
-        let ids: Vec<u32> = self.outputs.keys().copied().collect();
-        for id in ids {
-            self.draw(id);
-        }
+        self.dirty = true;
     }
 
-    /// Paint one output.
-    fn draw(&mut self, id: u32) {
-        let Some(out) = self.outputs.get(&id) else { return };
+    /// Paint every output now. False when a frame did not present (swapchain
+    /// out of date) and the paint must be retried.
+    fn paint_all(&mut self) -> bool {
+        let ids: Vec<u32> = self.outputs.keys().copied().collect();
+        let mut ok = true;
+        for id in ids {
+            ok &= self.draw(id);
+        }
+        ok
+    }
+
+    /// Paint one output. False only when a frame was drawn and did not
+    /// present; an output with nothing to paint on yet (no configure, no
+    /// renderer) is not a failure — its configure asks for a paint.
+    fn draw(&mut self, id: u32) -> bool {
+        let Some(out) = self.outputs.get(&id) else { return true };
         if !out.configured || out.width <= 0.0 || out.height <= 0.0 {
-            return;
+            return true;
         }
         let (w, h, scale) = (out.width, out.height, out.scale);
 
@@ -274,8 +292,8 @@ impl AppState {
         // Split the borrow: the renderer lives in the map, the font system on
         // self, and prepare_text needs both at once.
         let Self { outputs, font_system, swash_cache, .. } = self;
-        let Some(out) = outputs.get_mut(&id) else { return };
-        let Some(renderer) = out.renderer.as_mut() else { return };
+        let Some(out) = outputs.get_mut(&id) else { return true };
+        let Some(renderer) = out.renderer.as_mut() else { return true };
         renderer.prepare_text(font_system, swash_cache, &spans);
         renderer.draw_frame_2d(Frame2D {
             verts: &verts,
@@ -286,7 +304,7 @@ impl AppState {
             clear_color: [0.0, 0.0, 0.0, 1.0],
             // Always a full frame: the lock screen repaints whole.
             damage: None,
-        });
+        })
     }
 
     /// The lock screen itself: an opaque ground, a centred card, the password
@@ -518,7 +536,7 @@ impl Dispatch<ExtSessionLockSurfaceV1, u32> for AppState {
                     }
                 }
             }
-            state.draw(*id);
+            state.dirty = true;
         }
     }
 }
@@ -544,7 +562,7 @@ impl CompositorHandler for AppState {
                 r.resize((out.width * out.scale) as u32, (out.height * out.scale) as u32);
             }
         }
-        self.draw(id);
+        self.dirty = true;
     }
 
     fn transform_changed(
@@ -930,6 +948,7 @@ fn main() {
         unlock_when_locked: false,
         unlocked: false,
         exit: false,
+        dirty: false,
         font_system: cce_ui::create_font_system(),
         swash_cache: SwashCache::new(),
         auth_tx,
@@ -954,9 +973,11 @@ fn main() {
                 auth::AuthEvent::Failure { msg } => {
                     state.phase = Phase::Prompt;
                     state.status = Some(msg);
+                    state.dirty = true;
                 }
                 auth::AuthEvent::Info { msg } => {
                     state.status = Some(msg);
+                    state.dirty = true;
                 }
             }
         })
@@ -966,20 +987,22 @@ fn main() {
         .insert(event_loop.handle())
         .expect("wayland source");
 
+    // Blocks until something happens: every wake-up is an event source on
+    // this loop — the Wayland connection, the auth channel, the keyboard's
+    // repeat timer. The one exception is a frame that failed to present,
+    // which is retried on a short timeout until it does.
+    let mut retry_paint = false;
     while !state.exit {
-        if event_loop
-            .dispatch(std::time::Duration::from_millis(50), &mut state)
-            .is_err()
-        {
+        let timeout = retry_paint.then(|| std::time::Duration::from_millis(50));
+        if event_loop.dispatch(timeout, &mut state).is_err() {
             break;
         }
-        // Redraw outside the event handlers: an auth result arrives on the
-        // calloop channel with no qh in scope.
-        if !matches!(state.phase, Phase::Unlocking) {
-            let ids: Vec<u32> = state.outputs.keys().copied().collect();
-            for id in ids {
-                state.draw(id);
-            }
+        // Paint outside the event handlers, once per batch of events: an auth
+        // result arrives on the calloop channel with no qh in scope, and a
+        // burst of keys is one frame, not one each.
+        if (state.dirty || retry_paint) && !matches!(state.phase, Phase::Unlocking) {
+            state.dirty = false;
+            retry_paint = !state.paint_all();
         }
     }
 
