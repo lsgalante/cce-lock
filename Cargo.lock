@@ -404,7 +404,7 @@ dependencies = [
 [[package]]
 name = "cce-core"
 version = "0.1.0"
-source = "git+https://github.com/lsgalante/cce-core.git?rev=6a542c18ee31a20cfa3ecaa9da71ffa1d995af04#6a542c18ee31a20cfa3ecaa9da71ffa1d995af04"
+source = "git+https://github.com/lsgalante/cce-core.git?rev=5b8dcb30f1b0d7d607ab49d637069560eca0cb14#5b8dcb30f1b0d7d607ab49d637069560eca0cb14"
 dependencies = [
  "fluent-bundle",
  "kdl",
@@ -436,7 +436,7 @@ dependencies = [
 [[package]]
 name = "cce-ui"
 version = "0.1.0"
-source = "git+https://github.com/lsgalante/cce-ui.git?rev=174185f9df9996e505a2e1b351544403d64bf2fa#174185f9df9996e505a2e1b351544403d64bf2fa"
+source = "git+https://github.com/lsgalante/cce-ui.git?rev=7310ddf5f2dc1f2f4434163ed0d53819728a7e68#7310ddf5f2dc1f2f4434163ed0d53819728a7e68"
 dependencies = [
  "accesskit",
  "ash",
