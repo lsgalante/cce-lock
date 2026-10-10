@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cce-ui = { git = "https://github.com/lsgalante/cce-ui.git", rev = "859a062e5176693926dc9c20ce938f4ba1c9b1a4" }
+cce-ui = { git = "https://github.com/lsgalante/cce-ui.git", rev = "d5b546acae0e8bf95bab8dc8cf7e6bd7ba80ac87" }
 # Raw pam_sys, not the `pam` wrapper: the locker needs a conversation function
 # that answers PROMPT_ECHO_OFF from a buffer it holds, and nothing else.
 pam-sys = "0.5.6"
