@@ -242,7 +242,7 @@ dependencies = [
 [[package]]
 name = "cce-ui"
 version = "0.1.0"
-source = "git+https://github.com/lsgalante/cce-ui.git?rev=70d79627eda66c68011ed0bcf6c0f36f397e4424#70d79627eda66c68011ed0bcf6c0f36f397e4424"
+source = "git+https://github.com/lsgalante/cce-ui.git?rev=e29164bf83d879589e354b5cbe1c42c165488d4c#e29164bf83d879589e354b5cbe1c42c165488d4c"
 dependencies = [
  "accesskit",
  "ash",
