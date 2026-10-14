@@ -856,7 +856,8 @@ unlockable session.
 /// down on 2026-09-19. An unrecognised argument must not fall through to
 /// locking either: a typo is a question, not a request to seize the screen.
 fn handle_args() {
-    for arg in std::env::args().skip(1) {
+    // Every arm exits, so the first argument decides: the rest are never read.
+    if let Some(arg) = std::env::args().nth(1) {
         match arg.as_str() {
             "-h" | "--help" => {
                 print!("{USAGE}");
